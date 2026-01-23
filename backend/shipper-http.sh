@@ -1,18 +1,18 @@
 #!/usr/bin/env sh
 set -eu
 
-# Loads SUPABASE_URL / optional CORO_FUNCTION_URL from your .env if provided
-if [ -n "${CORO_ENV_FILE:-}" ] && [ -f "$CORO_ENV_FILE" ]; then
+# Loads SUPABASE_URL / optional HELD_FUNCTION_URL from your .env if provided
+if [ -n "${HELD_ENV_FILE:-}" ] && [ -f "$HELD_ENV_FILE" ]; then
   # shellcheck disable=SC1090
-  . "$CORO_ENV_FILE"
+  . "$HELD_ENV_FILE"
 fi
 
 derive_func_url() {
-  if [ -n "${CORO_FUNCTION_URL:-}" ]; then
-    printf '%s' "$CORO_FUNCTION_URL"; return
+  if [ -n "${HELD_FUNCTION_URL:-}" ]; then
+    printf '%s' "$HELD_FUNCTION_URL"; return
   fi
   if [ -z "${SUPABASE_URL:-}" ]; then
-    echo "CORO_FUNCTION_URL or SUPABASE_URL is required" >&2; exit 1
+    echo "HELD_FUNCTION_URL or SUPABASE_URL is required" >&2; exit 1
   fi
   proj="$(printf '%s' "$SUPABASE_URL" | sed -E 's#https?://([^/]+)\.supabase\.co.*#\1#')"
   printf 'https://%s.functions.supabase.co/ship-commands' "$proj"
@@ -23,19 +23,19 @@ FUNCTION_URL="$(derive_func_url)"
 # Read JWT saved by the Hyper plugin
 JWT="$(python3 - <<'PY'
 import json, os
-p=os.path.expanduser("~/.coro/session.json")
+p=os.path.expanduser("~/.HELD/session.json")
 try:
     with open(p) as f: print(json.load(f).get("access_token",""))
 except Exception: print("")
 PY
 )"
-[ -n "$JWT" ] || { echo "No JWT (~/.coro/session.json). Sign in first." >&2; exit 1; }
+[ -n "$JWT" ] || { echo "No JWT (~/.HELD/session.json). Sign in first." >&2; exit 1; }
 
 rotate="${SHIP_ROTATE:-0}"
-logfile="${CORO_LOG_FILE:-$CORO_LOG_DIR/dump.jsonl}"
-[ -n "${CORO_LOG_DIR:-}" ] || CORO_LOG_DIR="$(dirname "$logfile")"
+logfile="${HELD_LOG_FILE:-$HELD_LOG_DIR/dump.jsonl}"
+[ -n "${HELD_LOG_DIR:-}" ] || HELD_LOG_DIR="$(dirname "$logfile")"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"; pid="$$"
-out="${CORO_LOG_DIR%/}/.shipper-http.out"
+out="${HELD_LOG_DIR%/}/.shipper-http.out"
 
 # --- ROTATE path: make a snapshot, truncate live, then remove snapshot on success
 if [ "$rotate" = "1" ]; then
@@ -46,7 +46,7 @@ if [ "$rotate" = "1" ]; then
   code="$(curl -sS -X POST \
     -H "Authorization: Bearer $JWT" \
     -H "Content-Type: application/x-ndjson" \
-    ${CORO_TEAM_ID:+-H "x-coro-team-id: $CORO_TEAM_ID"} \
+    ${HELD_TEAM_ID:+-H "x-HELD-team-id: $HELD_TEAM_ID"} \
     --data-binary "@${snap}" \
     -o "$out" -w "%{http_code}" \
     "$FUNCTION_URL")"
@@ -85,7 +85,7 @@ code="$(
   head -c "$size" "$logfile" | curl -sS -X POST \
     -H "Authorization: Bearer $JWT" \
     -H "Content-Type: application/x-ndjson" \
-    ${CORO_TEAM_ID:+-H "x-coro-team-id: $CORO_TEAM_ID"} \
+    ${HELD_TEAM_ID:+-H "x-HELD-team-id: $HELD_TEAM_ID"} \
     --data-binary @- \
     -o "$out" -w "%{http_code}" \
     "$FUNCTION_URL"
